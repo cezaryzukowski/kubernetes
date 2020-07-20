@@ -134,7 +134,7 @@ func (m *mockHintProvider) GetTopologyHints(pod *v1.Pod, container *v1.Container
 	return m.th
 }
 
-func (m *mockHintProvider) GetPodLevelTopologyHints(pod *v1.Pod) map[string][]TopologyHint {
+func (m *mockHintProvider) GetPodTopologyHints(pod *v1.Pod) map[string][]TopologyHint {
 	return m.th
 }
 
@@ -779,13 +779,13 @@ func TestAdmit(t *testing.T) {
 	for _, tc := range tcases {
 		man1 := manager{
 			policy:           tc.policy,
-			topologyScope:    containerScopeTopology,
+			topologyScope:    containerTopologyScope,
 			podTopologyHints: make(map[string]map[string]TopologyHint),
 			hintProviders:    tc.hp,
 		}
 		man2 := manager{
 			policy:           tc.policy,
-			topologyScope:    podScopeTopology,
+			topologyScope:    podTopologyScope,
 			podTopologyHints: make(map[string]map[string]TopologyHint),
 			hintProviders:    tc.hp,
 		}

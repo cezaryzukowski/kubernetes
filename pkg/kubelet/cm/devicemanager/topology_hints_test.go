@@ -914,7 +914,7 @@ func TestGetPodDeviceRequest(t *testing.T) {
 	}
 }
 
-func TestGetPodLevelTopologyHints(t *testing.T) {
+func TestGetPodTopologyHints(t *testing.T) {
 	tcases := getCommonTestCases()
 	tcases = append(tcases, getPodScopeTestCases()...)
 
@@ -953,7 +953,7 @@ func TestGetPodLevelTopologyHints(t *testing.T) {
 			}
 		}
 
-		hints := m.GetPodLevelTopologyHints(tc.pod)
+		hints := m.GetPodTopologyHints(tc.pod)
 
 		for r := range tc.expectedHints {
 			sort.SliceStable(hints[r], func(i, j int) bool {
@@ -1680,4 +1680,3 @@ func getPodScopeTestCases() []topologyHintTestCase {
 		},
 	}
 }
-
