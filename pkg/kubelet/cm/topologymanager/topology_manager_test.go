@@ -18,12 +18,12 @@ package topologymanager
 
 import (
 	"fmt"
-	"reflect"
+
 	"strings"
 	"testing"
 
 	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
+
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask"
 	"k8s.io/kubernetes/pkg/kubelet/lifecycle"
 )
@@ -116,7 +116,7 @@ func TestManagerScope(t *testing.T) {
 			}
 		} else {
 			rawMgr := mngr.(*manager)
-			if rawMgr.scope != tc.expectedScope {
+			if rawMgr.scope.Name() != tc.expectedScope {
 				t.Errorf("Unexpected scope name. Have: %q wants %q", rawMgr.scope, tc.expectedScope)
 			}
 		}
@@ -143,155 +143,6 @@ func (m *mockHintProvider) Allocate(pod *v1.Pod, container *v1.Container) error 
 	return nil
 }
 
-func TestGetAffinity(t *testing.T) {
-	tcases := []struct {
-		name          string
-		containerName string
-		podUID        string
-		expected      TopologyHint
-	}{
-		{
-			name:          "case1",
-			containerName: "nginx",
-			podUID:        "0aafa4c4-38e8-11e9-bcb1-a4bf01040474",
-			expected:      TopologyHint{},
-		},
-	}
-	for _, tc := range tcases {
-		mngr := manager{}
-		actual := mngr.GetAffinity(tc.podUID, tc.containerName)
-		if !reflect.DeepEqual(actual, tc.expected) {
-			t.Errorf("Expected Affinity in result to be %v, got %v", tc.expected, actual)
-		}
-	}
-}
-
-func TestAccumulateProvidersHints(t *testing.T) {
-	tcases := []struct {
-		name     string
-		hp       []HintProvider
-		expected []map[string][]TopologyHint
-	}{
-		{
-			name:     "TopologyHint not set",
-			hp:       []HintProvider{},
-			expected: nil,
-		},
-		{
-			name: "HintProvider returns empty non-nil map[string][]TopologyHint",
-			hp: []HintProvider{
-				&mockHintProvider{
-					map[string][]TopologyHint{},
-				},
-			},
-			expected: []map[string][]TopologyHint{
-				{},
-			},
-		},
-		{
-			name: "HintProvider returns - nil map[string][]TopologyHint from provider",
-			hp: []HintProvider{
-				&mockHintProvider{
-					map[string][]TopologyHint{
-						"resource": nil,
-					},
-				},
-			},
-			expected: []map[string][]TopologyHint{
-				{
-					"resource": nil,
-				},
-			},
-		},
-		{
-			name: "2 HintProviders with 1 resource returns hints",
-			hp: []HintProvider{
-				&mockHintProvider{
-					map[string][]TopologyHint{
-						"resource1": {TopologyHint{}},
-					},
-				},
-				&mockHintProvider{
-					map[string][]TopologyHint{
-						"resource2": {TopologyHint{}},
-					},
-				},
-			},
-			expected: []map[string][]TopologyHint{
-				{
-					"resource1": {TopologyHint{}},
-				},
-				{
-					"resource2": {TopologyHint{}},
-				},
-			},
-		},
-		{
-			name: "2 HintProviders 1 with 1 resource 1 with nil hints",
-			hp: []HintProvider{
-				&mockHintProvider{
-					map[string][]TopologyHint{
-						"resource1": {TopologyHint{}},
-					},
-				},
-				&mockHintProvider{nil},
-			},
-			expected: []map[string][]TopologyHint{
-				{
-					"resource1": {TopologyHint{}},
-				},
-				nil,
-			},
-		},
-		{
-			name: "2 HintProviders 1 with 1 resource 1 empty hints",
-			hp: []HintProvider{
-				&mockHintProvider{
-					map[string][]TopologyHint{
-						"resource1": {TopologyHint{}},
-					},
-				},
-				&mockHintProvider{
-					map[string][]TopologyHint{},
-				},
-			},
-			expected: []map[string][]TopologyHint{
-				{
-					"resource1": {TopologyHint{}},
-				},
-				{},
-			},
-		},
-		{
-			name: "HintProvider with 2 resources returns hints",
-			hp: []HintProvider{
-				&mockHintProvider{
-					map[string][]TopologyHint{
-						"resource1": {TopologyHint{}},
-						"resource2": {TopologyHint{}},
-					},
-				},
-			},
-			expected: []map[string][]TopologyHint{
-				{
-					"resource1": {TopologyHint{}},
-					"resource2": {TopologyHint{}},
-				},
-			},
-		},
-	}
-
-	for _, tc := range tcases {
-		mngr := manager{
-			hintProviders: tc.hp,
-		}
-		actual := mngr.accumulateProvidersHints(&v1.Pod{}, &v1.Container{})
-		if !reflect.DeepEqual(actual, tc.expected) {
-			t.Errorf("Test Case %s: Expected NUMANodeAffinity in result to be %v, got %v", tc.name, tc.expected, actual)
-		}
-	}
-}
-
 type mockPolicy struct {
 	nonePolicy
 	ph []map[string][]TopologyHint
@@ -302,187 +153,8 @@ func (p *mockPolicy) Merge(providersHints []map[string][]TopologyHint) (Topology
 	return TopologyHint{}, true
 }
 
-func TestCalculateAffinity(t *testing.T) {
-	tcases := []struct {
-		name     string
-		hp       []HintProvider
-		expected []map[string][]TopologyHint
-	}{
-		{
-			name:     "No hint providers",
-			hp:       []HintProvider{},
-			expected: ([]map[string][]TopologyHint)(nil),
-		},
-		{
-			name: "HintProvider returns empty non-nil map[string][]TopologyHint",
-			hp: []HintProvider{
-				&mockHintProvider{
-					map[string][]TopologyHint{},
-				},
-			},
-			expected: []map[string][]TopologyHint{
-				{},
-			},
-		},
-		{
-			name: "HintProvider returns -nil map[string][]TopologyHint from provider",
-			hp: []HintProvider{
-				&mockHintProvider{
-					map[string][]TopologyHint{
-						"resource": nil,
-					},
-				},
-			},
-			expected: []map[string][]TopologyHint{
-				{
-					"resource": nil,
-				},
-			},
-		},
-		{
-			name: "Assorted HintProviders",
-			hp: []HintProvider{
-				&mockHintProvider{
-					map[string][]TopologyHint{
-						"resource-1/A": {
-							{NUMANodeAffinity: NewTestBitMask(0), Preferred: true},
-							{NUMANodeAffinity: NewTestBitMask(0, 1), Preferred: false},
-						},
-						"resource-1/B": {
-							{NUMANodeAffinity: NewTestBitMask(1), Preferred: true},
-							{NUMANodeAffinity: NewTestBitMask(1, 2), Preferred: false},
-						},
-					},
-				},
-				&mockHintProvider{
-					map[string][]TopologyHint{
-						"resource-2/A": {
-							{NUMANodeAffinity: NewTestBitMask(2), Preferred: true},
-							{NUMANodeAffinity: NewTestBitMask(3, 4), Preferred: false},
-						},
-						"resource-2/B": {
-							{NUMANodeAffinity: NewTestBitMask(2), Preferred: true},
-							{NUMANodeAffinity: NewTestBitMask(3, 4), Preferred: false},
-						},
-					},
-				},
-				&mockHintProvider{
-					map[string][]TopologyHint{
-						"resource-3": nil,
-					},
-				},
-			},
-			expected: []map[string][]TopologyHint{
-				{
-					"resource-1/A": {
-						{NUMANodeAffinity: NewTestBitMask(0), Preferred: true},
-						{NUMANodeAffinity: NewTestBitMask(0, 1), Preferred: false},
-					},
-					"resource-1/B": {
-						{NUMANodeAffinity: NewTestBitMask(1), Preferred: true},
-						{NUMANodeAffinity: NewTestBitMask(1, 2), Preferred: false},
-					},
-				},
-				{
-					"resource-2/A": {
-						{NUMANodeAffinity: NewTestBitMask(2), Preferred: true},
-						{NUMANodeAffinity: NewTestBitMask(3, 4), Preferred: false},
-					},
-					"resource-2/B": {
-						{NUMANodeAffinity: NewTestBitMask(2), Preferred: true},
-						{NUMANodeAffinity: NewTestBitMask(3, 4), Preferred: false},
-					},
-				},
-				{
-					"resource-3": nil,
-				},
-			},
-		},
-	}
 
-	for _, tc := range tcases {
-		mngr := manager{}
-		mngr.policy = &mockPolicy{}
-		mngr.hintProviders = tc.hp
-		mngr.calculateAffinity(&v1.Pod{}, &v1.Container{})
-		actual := mngr.policy.(*mockPolicy).ph
-		if !reflect.DeepEqual(tc.expected, actual) {
-			t.Errorf("Test Case: %s", tc.name)
-			t.Errorf("Expected result to be %v, got %v", tc.expected, actual)
-		}
-	}
-}
 
-func TestAddContainer(t *testing.T) {
-	testCases := []struct {
-		name        string
-		containerID string
-		podUID      types.UID
-	}{
-		{
-			name:        "Case1",
-			containerID: "nginx",
-			podUID:      "0aafa4c4-38e8-11e9-bcb1-a4bf01040474",
-		},
-		{
-			name:        "Case2",
-			containerID: "Busy_Box",
-			podUID:      "b3ee37fc-39a5-11e9-bcb1-a4bf01040474",
-		},
-	}
-	mngr := manager{}
-	mngr.podMap = make(map[string]string)
-	for _, tc := range testCases {
-		pod := v1.Pod{}
-		pod.UID = tc.podUID
-		err := mngr.AddContainer(&pod, tc.containerID)
-		if err != nil {
-			t.Errorf("Expected error to be nil but got: %v", err)
-		}
-		if val, ok := mngr.podMap[tc.containerID]; ok {
-			if reflect.DeepEqual(val, pod.UID) {
-				t.Errorf("Error occurred")
-			}
-		} else {
-			t.Errorf("Error occurred, Pod not added to podMap")
-		}
-	}
-}
-
-func TestRemoveContainer(t *testing.T) {
-	testCases := []struct {
-		name        string
-		containerID string
-		podUID      types.UID
-	}{
-		{
-			name:        "Case1",
-			containerID: "nginx",
-			podUID:      "0aafa4c4-38e8-11e9-bcb1-a4bf01040474",
-		},
-		{
-			name:        "Case2",
-			containerID: "Busy_Box",
-			podUID:      "b3ee37fc-39a5-11e9-bcb1-a4bf01040474",
-		},
-	}
-	var len1, len2 int
-	mngr := manager{}
-	mngr.podMap = make(map[string]string)
-	for _, tc := range testCases {
-		mngr.podMap[tc.containerID] = string(tc.podUID)
-		len1 = len(mngr.podMap)
-		err := mngr.RemoveContainer(tc.containerID)
-		len2 = len(mngr.podMap)
-		if err != nil {
-			t.Errorf("Expected error to be nil but got: %v", err)
-		}
-		if len1-len2 != 1 {
-			t.Errorf("Remove Pod resulted in error")
-		}
-	}
-
-}
 func TestAddHintProvider(t *testing.T) {
 	var len1 int
 	tcases := []struct {
@@ -496,18 +168,26 @@ func TestAddHintProvider(t *testing.T) {
 			},
 		},
 	}
-	mngr := manager{}
+	ctnScope := &containerScope{
+		scope{
+			hintProviders: tcases[0].hp,
+			name:          containerTopologyScope,
+		},
+	}
+	mngr := manager{
+		scope: ctnScope,
+	}
 	for _, tc := range tcases {
-		mngr.hintProviders = []HintProvider{}
-		len1 = len(mngr.hintProviders)
+		len1 = len(ctnScope.hintProviders)
 		mngr.AddHintProvider(tc.hp[0])
 	}
-	len2 := len(mngr.hintProviders)
+	len2 := len(ctnScope.hintProviders)
 	if len2-len1 != 1 {
 		t.Errorf("error")
 	}
 }
 
+//TODO
 func TestAdmit(t *testing.T) {
 	numaNodes := []int{0, 1}
 
@@ -777,17 +457,33 @@ func TestAdmit(t *testing.T) {
 		},
 	}
 	for _, tc := range tcases {
-		man1 := manager{
-			policy:           tc.policy,
-			scope:            containerTopologyScope,
-			podTopologyHints: make(map[string]map[string]TopologyHint),
-			hintProviders:    tc.hp,
+		pth := PodTopologyHints{}
+		ctnScope := &containerScope{
+			scope{
+				hintProviders:    tc.hp,
+				policy:           tc.policy,
+				podTopologyHints: pth,
+				name:             containerTopologyScope,
+			},
 		}
-		man2 := manager{
+
+		mngr1 := manager{
 			policy:           tc.policy,
-			scope:            podTopologyScope,
-			podTopologyHints: make(map[string]map[string]TopologyHint),
-			hintProviders:    tc.hp,
+			scope:            ctnScope,
+		}
+
+		pScope := &podScope{
+			scope{
+				hintProviders:    tc.hp,
+				policy:           tc.policy,
+				podTopologyHints: pth,
+				name:             podTopologyScope,
+			},
+		}
+
+		mngr2 := manager{
+			policy:           tc.policy,
+			scope:            pScope,
 		}
 
 		pod := &v1.Pod{
@@ -807,12 +503,12 @@ func TestAdmit(t *testing.T) {
 			Pod: pod,
 		}
 		// container scope Admit
-		actual1 := man1.Admit(&podAttr)
+		actual1 := mngr1.Admit(&podAttr)
 		if actual1.Admit != tc.expected {
 			t.Errorf("Error occurred, expected Admit in result to be %v got %v", tc.expected, actual1.Admit)
 		}
 		// pod scope Admit
-		actual2 := man2.Admit(&podAttr)
+		actual2 := mngr2.Admit(&podAttr)
 		if actual2.Admit != tc.expected {
 			t.Errorf("Error occurred, expected Admit in result to be %v got %v", tc.expected, actual2.Admit)
 		}
